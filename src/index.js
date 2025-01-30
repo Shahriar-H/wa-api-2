@@ -2,14 +2,14 @@ const express = require("express");
 const { Server } = require("socket.io");
 const cors = require("cors");
 const { createServer } = require("http");
-const { Client, LocalAuth } = require("whatsapp-web.js");
+const { Client, LocalAuth,MessageMedia  } = require("whatsapp-web.js");
 const qrcode = require("qrcode-terminal");
 const fs = require("fs");
 const { connection } = require("./config");
 const dbRoutes = require("./routes/db.routes");
-const chromium = require("@sparticuz/chromium");
 
 const path = require('path');
+const { default: axios } = require("axios");
 
 // const authPath = path.join('/tmp', '.wwebjs_auth');
 // if (!fs.existsSync(authPath)) {
@@ -36,7 +36,7 @@ let client;
 
 client = new Client({
     authStrategy: new LocalAuth({
-        clientId: 12322
+        clientId: 6543382
     }),
     puppeteer: {
         args: ['--no-sandbox', '--disable-setuid-sandbox']
@@ -54,11 +54,11 @@ client.initialize().catch(err => console.log(err))
       
       const db = await connection();
       await db.collection("users").updateOne(
-          { number: "01771973925" },
+          { number: "01775564028" },
           { $set: { qr } }
       );
       qrcode.generate(qr, { small: true });
-    //   console.log("QR RECEIVED", qr);
+      console.log("QR RECEIVED", qr);
   });
 
   client.on("ready", () => {
@@ -80,18 +80,43 @@ client.initialize().catch(err => console.log(err))
 
 
 // API endpoints
-app.post("/message", (req, res) => {
-    const { phoneNumber, message } = req.body;
-    const formattedNumber = phoneNumber.endsWith("@c.us")
-        ? phoneNumber
-        : `${phoneNumber}@c.us`;
+app.post("/message", async (req, res) => {
+    try {
+        const { phoneNumber, message, mediaUrl } = req.body;
+        const formattedNumber = phoneNumber.endsWith("@c.us") ? phoneNumber : `${phoneNumber}@c.us`;
 
-    client
-        .sendMessage(formattedNumber, message)
-        .then(() => console.log(`Message sent to ${formattedNumber}`))
-        .catch((err) => console.error("Failed to send message:", err));
+        let media;
+        if (mediaUrl) {
+            const response = await axios.get(mediaUrl, { responseType: "arraybuffer" }); // ⬅️ Download media
+            const mimeType = response.headers["content-type"]; // Get file type
+            media = new MessageMedia(mimeType, Buffer.from(response.data).toString("base64"));
+        }
 
-    res.send();
+        if (media) {
+            await client.sendMessage(formattedNumber, media, { caption: message });
+            console.log(`Media + Message sent to ${formattedNumber}`);
+        } else {
+            await client.sendMessage(formattedNumber, message);
+            console.log(`Message sent to ${formattedNumber}`);
+        }
+
+        res.json({ success: true });
+    } catch (error) {
+        console.error("Failed to send message:", error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+    // const { phoneNumber, message } = req.body;
+    // const formattedNumber = phoneNumber.endsWith("@c.us")
+    //     ? phoneNumber
+    //     : `${phoneNumber}@c.us`;
+    // console.log(formattedNumber);
+    
+    // client
+    //     .sendMessage("8801303954432@c.us", message)
+    //     .then(() => console.log(`Message sent to ${formattedNumber}`))
+    //     .catch((err) => console.error("Failed to send message:", err));
+
+    // res.send();
 });
 
 app.get("/", (req, res) => {
